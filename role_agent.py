@@ -13,14 +13,22 @@ class RoleAnalysisParser(BaseOutputParser):
     """Parser to extract role analysis and selections from AI response"""
     
     def parse(self, text: str) -> Dict[str, any]:
-        """Parse the AI response to extract roles and reasoning"""
+        """Parse the AI response to extract roles from JSON format"""
         
-        # Initialize result structure
+        try:
+            # Try to parse as JSON first
+            if '{' in text and '}' in text:
+                # Extract JSON from the response
+                start = text.find('{')
+                end = text.rfind('}') + 1
+                json_str = text[start:end]
+                return json.loads(json_str)
+        except json.JSONDecodeError:
+            pass
+        
+        # Fallback to original parsing if JSON fails
         result = {
-            "selected_roles": [],
-            "reasoning": "",
-            "project_type": "",
-            "complexity": "medium"
+            "selected_roles": []
         }
         
         lines = text.strip().split('\n')
@@ -31,21 +39,12 @@ class RoleAnalysisParser(BaseOutputParser):
             if not line:
                 continue
             
-            # Identify sections
+            # Identify sections - only look for roles section
             if "SELECTED ROLES:" in line.upper():
                 current_section = "roles"
                 continue
-            elif "REASONING:" in line.upper() or "ANALYSIS:" in line.upper():
-                current_section = "reasoning"
-                continue
-            elif "PROJECT TYPE:" in line.upper():
-                current_section = "project_type"
-                continue
-            elif "COMPLEXITY:" in line.upper():
-                current_section = "complexity"
-                continue
             
-            # Process based on current section
+            # Process based on current section - only process roles
             if current_section == "roles":
                 # Extract role from numbered or bulleted list
                 role_match = re.match(r'^[\d+\.\-\*\•]\s*(.+)', line)
@@ -58,13 +57,6 @@ class RoleAnalysisParser(BaseOutputParser):
                 elif line and not any(char in line for char in ['=', '-', '*']) and len(line.split()) <= 4:
                     # Simple role name on its own line
                     result["selected_roles"].append(line)
-            
-            elif current_section == "reasoning":
-                result["reasoning"] += line + " "
-            elif current_section == "project_type":
-                result["project_type"] = line
-            elif current_section == "complexity":
-                result["complexity"] = line.lower()
         
         return result
 
@@ -104,6 +96,10 @@ class IntelligentRoleAgent:
         'AI & Machine Learning': {
             'AI/ML Engineer': {
                 'keywords': ['ai', 'machine learning', 'ml', 'neural networks', 'deep learning', 'tensorflow', 'pytorch'],
+                'complexity_weight': 4
+            },
+            'Generative AI Engineer': {
+                'keywords': ['generative ai', 'llm', 'agents', 'chatbot', 'gpt', 'ai agents', 'prompt engineering', 'generative models'],
                 'complexity_weight': 4
             },
             'Data Scientist': {
@@ -226,61 +222,24 @@ class IntelligentRoleAgent:
         roles_text = self._generate_roles_catalog()
         
         template = """
-🎯 **INTELLIGENT ROLE SELECTION SPECIALIST**
-
 You are an expert technical architect and team composition specialist. Your task is to analyze project requirements and select the optimal team roles.
 
-📋 **PROJECT TO ANALYZE:**
+PROJECT TO ANALYZE:
 {project_description}
 
-🏗️ **AVAILABLE ROLES CATALOG:**
+AVAILABLE ROLES CATALOG:
 {available_roles}
 
-🧠 **ANALYSIS FRAMEWORK:**
-
-1. **Project Type Classification**: Identify if this is a web app, mobile app, AI system, data platform, enterprise software, etc.
-
-2. **Technical Complexity Assessment**: 
-   - Simple (2-3 roles): Basic CRUD apps, simple websites
-   - Medium (4-5 roles): Complex applications with integrations
-   - High (6+ roles): Enterprise systems, AI platforms, complex infrastructures
-
-3. **Core Requirements Analysis**:
-   - User interaction needs (Frontend requirements)
-   - Data processing needs (Backend/Database requirements)
-   - Specialized technology needs (AI, Blockchain, etc.)
-   - Deployment and scaling needs (DevOps/Cloud)
-   - Quality and security needs (QA, Security)
-
-4. **Team Optimization**:
-   - Always include essential roles for the project type
-   - Add specialized roles only when genuinely needed
-   - Consider project lifecycle (development, testing, deployment)
-   - Balance team size with project scope
-
-🎯 **SELECTION CRITERIA:**
+SELECTION CRITERIA:
 - Focus on roles that will have substantial, ongoing work
 - Ensure coverage of all critical project aspects
 - Avoid redundant or marginally useful roles
 - Consider both development and operational phases
+- Quality over quantity - select 3-6 highly relevant roles
 
-📝 **OUTPUT FORMAT:**
-
-PROJECT TYPE: [Web Application/Mobile App/AI System/Data Platform/etc.]
-
-COMPLEXITY: [Simple/Medium/High]
-
-SELECTED ROLES:
-1. [Role Name]
-2. [Role Name]
-3. [Role Name]
-4. [Role Name]
-5. [Role Name]
-
-REASONING:
-[Provide 2-3 sentences explaining why each role is essential for this specific project. Consider the project's unique requirements and how each role contributes to success.]
-
-🔍 **Remember**: Quality over quantity. Better to have 3-5 highly relevant roles than 8 roles where some have minimal contribution.
+OUTPUT FORMAT:
+Return your response as JSON in this exact format:
+{{"selected_roles": ["Role Name 1", "Role Name 2", "Role Name 3"]}}
 """
         
         self.prompt = PromptTemplate(
@@ -303,13 +262,13 @@ REASONING:
     
     def analyze_project(self, project_description: str) -> Dict[str, any]:
         """
-        Analyze project and return comprehensive role selection with reasoning
+        Analyze project and return selected roles only
         
         Args:
             project_description (str): Description of the project
             
         Returns:
-            Dict containing selected roles, reasoning, project type, and complexity
+            Dict containing only selected roles
         """
         
         try:
@@ -323,17 +282,13 @@ REASONING:
             # Parse the response
             analysis = self.parser.parse(result.content)
             
-            # Validate and enhance the selection - let AI handle this intelligently
             return analysis
             
         except Exception as e:
             print(f"Error in project analysis: {str(e)}")
             # Fallback analysis
             return {
-                "selected_roles": ["Frontend Developer", "Backend Developer"],
-                "reasoning": "Fallback selection due to analysis error",
-                "project_type": "Web Application",
-                "complexity": "medium"
+                "selected_roles": ["Frontend Developer", "Backend Developer"]
             }
     
     def get_role_recommendations(self, project_description: str) -> Dict[str, any]:
@@ -361,22 +316,14 @@ def main():
         ]
         
         for i, project in enumerate(test_projects, 1):
-            print(f"🚀 Test Project {i}:")
-            print(f"Project: {project}\n")
+            print(f"Test Project {i}:")
+            print(f"Project: {project}")
             
             # Get role recommendations
             recommendations = agent.get_role_recommendations(project)
             
-            print(f"📊 Analysis Results:")
-            print(f"Project Type: {recommendations.get('project_type', 'Unknown')}")
-            print(f"Complexity: {recommendations.get('complexity', 'Medium')}")
-            
-            print(f"\n👥 Selected Roles:")
-            for j, role in enumerate(recommendations['selected_roles'], 1):
-                print(f"{j}. {role}")
-            
-            print(f"\n💭 Reasoning:")
-            print(f"{recommendations.get('reasoning', 'No reasoning provided')}")
+            # Output as JSON
+            print(json.dumps(recommendations, indent=2))
             
             print("\n" + "="*50 + "\n")
         

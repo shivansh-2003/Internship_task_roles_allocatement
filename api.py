@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 
 # Import the task agent
-from task_agent import SmartTaskAgent
+from task_agent import SimpleTaskAgent
 
 load_dotenv()
 

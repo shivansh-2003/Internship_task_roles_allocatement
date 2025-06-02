@@ -36,7 +36,7 @@ class TaskResponse(BaseModel):
 
 # Initialize the task agent
 try:
-    task_agent = SmartTaskAgent()
+    task_agent = SimpleTaskAgent()
 except Exception as e:
     print(f"Error initializing task agent: {e}")
     task_agent = None
